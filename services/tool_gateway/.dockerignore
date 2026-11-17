@@ -1,0 +1,24 @@
+# Secrets — never bake into images
+.env
+.env.*
+*.pem
+*.key
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# VCS / IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Tests & docs (not needed at runtime)
+tests/
+docs/
+*.md

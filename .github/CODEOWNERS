@@ -1,0 +1,8 @@
+# Default owner for everything
+* @harsh-codm
+
+# Service-specific ownership
+services/control_plane/ @harsh-codm
+services/tool_gateway/  @harsh-codm
+apps/web/               @harsh-codm
+policy/                 @harsh-codm

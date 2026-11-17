@@ -1,0 +1,25 @@
+"""
+CDM-OS — API Routes: Tools
+
+Read-only endpoints for browsing registered tool definitions and their tiers.
+"""
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from control_plane.auth import Identity, Role, require_role
+from control_plane.database import get_db
+from control_plane.models import ToolDefinition
+from control_plane.schemas import ToolResponse
+
+router = APIRouter(prefix="/tools", tags=["Tools"])
+
+
+@router.get("", response_model=list[ToolResponse], include_in_schema=False)
+@router.get("/", response_model=list[ToolResponse])
+def list_tools(
+    identity: Identity = Depends(require_role(Role.VIEWER)),
+    db: Session = Depends(get_db),
+):
+    """List all registered tools with their tier classifications."""
+    return db.query(ToolDefinition).order_by(ToolDefinition.created_at.desc()).all()

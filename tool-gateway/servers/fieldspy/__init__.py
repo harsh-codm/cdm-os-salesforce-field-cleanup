@@ -1,1 +1,0 @@
-"""FieldSpy MCP Server Package."""

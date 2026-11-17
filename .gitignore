@@ -46,3 +46,6 @@ Thumbs.db
 *.log
 audit_logs/
 tmp/
+
+# Real-org backups — never commit to git (CR-P0-06)
+audit/backups/
