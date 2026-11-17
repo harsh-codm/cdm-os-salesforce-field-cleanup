@@ -1,372 +1,255 @@
-# CDM-OS — Enterprise Control Plane for Autonomous AI Agents
+# CDM-OS — Salesforce Field Cleanup
 
-> **Claude/LLM is not the system. CDM-OS is the system that controls what an LLM-powered agent can see, decide, and do.**
+> **The model PROPOSES. CDM-OS DECIDES. The tool EXECUTES.**
 
----
-
-## What Is This Repository?
-
-This repository implements **CDM-OS**, an enterprise operating architecture for digital labor. It acts as a **policy-driven, identity-aware, event-driven control plane** that sits between AI reasoning (LLM) and real-world execution (AWS, GitHub, Jira, Salesforce, etc.).
-
-### The Core Design Principle
+A policy-driven control plane for safely managing Salesforce custom field lifecycle — assessment, deprecation, and deletion — with deterministic policy evaluation, tiered human approval, and an immutable audit trail.
 
 ```
-The model should NEVER directly own production access.
-
-     LLM                          CDM-OS                      Real World
-  ┌──────────┐              ┌───────────────┐              ┌───────────┐
-  │ Reason   │  PROPOSAL    │ Who?          │  AUTHORIZED  │ AWS       │
-  │ Plan     │ ──────────►  │ Allowed?      │  ACTION      │ Salesforce│
-  │ Generate │              │ How risky?    │ ──────────►  │ GitHub    │
-  └──────────┘              │ Which policy? │              │ Jira      │
-                            │ Human needed? │              └───────────┘
-                            └───────────────┘
+  Agent / LLM              Control Plane              Tool Gateway
+ ┌──────────┐           ┌──────────────────┐        ┌──────────────┐
+ │ Propose  │  ──────►  │ Policy Engine    │  ────► │ Salesforce   │
+ │ field    │           │ Tier check       │        │ Metadata API │
+ │ cleanup  │           │ Human approval?  │        │ via MCP      │
+ └──────────┘           │ Audit log        │        └──────────────┘
+                        └──────────────────┘
 ```
 
 ---
 
-## Tech Stack & Prerequisites
+## Architecture
 
-| Component | Technology | Purpose |
+The system is two FastAPI services behind Docker Compose:
+
+| Service | Port | Responsibility |
 |---|---|---|
-| **Language** | Python 3.11+ | All backend services |
-| **Database** | PostgreSQL 17 + pgvector | Agent registry, audit logs, workflow state, vector embeddings |
-| **Cache** | Redis | Session state, real-time workflow coordination, event bus |
-| **API Framework** | FastAPI | Control Plane REST API |
-| **LLM Protocol** | MCP (Model Context Protocol) | Standardized tool access for agents |
-| **LLM Provider** | Claude (Anthropic) / AWS Bedrock | Hot-swappable via Model Gateway |
-| **IaC** | Terraform | AWS infrastructure provisioning |
-| **Containers** | Docker + docker-compose | Local dev + deployment |
+| **Control Plane** | 8000 | Proposals, policy engine, approval workflow, audit log |
+| **Tool Gateway** | 8080 | Governed Salesforce MCP tool execution |
 
----
+Supporting infrastructure: PostgreSQL 17 (with pgvector), Redis.
 
-## Architecture Overview — 7 Layers
+### How a Field Cleanup Works
 
-```
-┌─────────────────────────────────────┐
-│ 1. Human & Governance Layer         │  → docs/, frontend/
-├─────────────────────────────────────┤
-│ 2. Agent Control Plane              │  → control-plane/, policy/, workflows/
-├─────────────────────────────────────┤
-│ 3. Agent Runtime                    │  → agent-runtime/, agents/
-├─────────────────────────────────────┤
-│ 4. Intelligence / Model Gateway     │  → model-gateway/
-├─────────────────────────────────────┤
-│ 5. Knowledge / Memory / Precedents  │  → knowledge/
-├─────────────────────────────────────┤
-│ 6. Tool & Infrastructure Layer      │  → tool-gateway/, infrastructure/
-├─────────────────────────────────────┤
-│ 7. Observability / Security / FinOps│  → audit/, tests/
-└─────────────────────────────────────┘
-```
+1. **Propose** — An agent (or human) submits a proposal: "assess / deprecate / delete `Account.Legacy_Field__c`"
+2. **Evaluate** — The Policy Engine checks tier, rate limits, time windows, deny rules
+3. **Approve** — Tier-2 and Tier-3 actions require human approval via the governance UI
+4. **Execute** — Control Plane issues an HMAC-signed execution grant to the Tool Gateway
+5. **Audit** — Every step is recorded in the HMAC-signed, hash-chained audit log
 
----
+### Tool Tiers
 
-## Full System Architecture (§51)
-
-```
-                              HUMAN LAYER
- ┌───────────────────────────────────────────────────────────────────┐
- │ Guardian │ Skill Lead │ AIGB │ Security │ Architecture │ FinOps  │
- └────────────────────────────────┬──────────────────────────────────┘
-                                  │
-                   Intent / Approval / Override
-                                  │
-                                  ▼
- ┌───────────────────────────────────────────────────────────────────┐
- │                      CDM-OS CONTROL PLANE                        │
- │                                                                  │
- │  Agent Registry │ Policy/Guardrails  │ Lifecycle/Graduation      │
- │  Identity/IAM   │ Workflow/Orchestr. │ Arbitration/Boardroom     │
- │  Audit/Trace    │ Cost/FinOps        │ Kill Switch/Quarantine    │
- └────────────────────────────────┬──────────────────────────────────┘
-                                  │
-                                  ▼
- ┌───────────────────────────────────────────────────────────────────┐
- │                        AGENT RUNTIME                             │
- │    SRE Agents │ FinOps Agents │ Field Cleanup │ Dev Agents │ ... │
- └────────────────────────────────┬──────────────────────────────────┘
-                                  │
-                                  ▼
-                    ┌───────────────────────┐
-                    │    MODEL GATEWAY      │
-                    │ Claude / Bedrock      │
-                    │ Rate limits │ Budgets │
-                    │ Fallback │ Versioning │
-                    └───────────┬───────────┘
-                                │
-                                ▼
-                          ┌───────────┐
-                          │ LLM/Model │
-                          └───────────┘
-
-    KNOWLEDGE PLANE                           TOOL PLANE
- ┌──────────────────────┐          ┌──────────────────────────┐
- │ RAG / Documents      │          │ AWS        │ Salesforce  │
- │ Agent Memory         │          │ GitHub     │ Jira        │
- │ Precedents           │          │ Datadog    │ Splunk      │
- │ Runbooks             │          │ Kubernetes │ Slack       │
- └──────────────────────┘          └──────────────────────────┘
-
-                     OBSERVABILITY PLANE
- ┌───────────────────────────────────────────────────────────────────┐
- │ Logs │ Metrics │ Traces │ Token Cost │ Drift │ Security │ Audit  │
- └───────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## End-to-End Flow Example (§50)
-
-> Human says: *"Reduce unused development AWS resources."*
-
-| Step | What Happens | Component |
+| Tier | Actions | Approval |
 |---|---|---|
-| **1. Intent** | Human → CDM-OS → Task created | `control-plane/api/` |
-| **2. Agent Selection** | Task → FinOps Agent selected | `control-plane/agents/` |
-| **3. Context** | Agent retrieves AWS data + policies + precedents + budget | `knowledge/`, `policy/` |
-| **4. Planning** | Agent proposes: "Stop 10 underutilized instances, save $7,200/mo" | `agent-runtime/`, `model-gateway/` |
-| **5. Policy Check** | PDP evaluates: agent allowed? env allowed? cost within threshold? | `control-plane/policy/` |
-| **6. Arbitration** | SRE says 3 instances needed → Digital Boardroom resolves | `control-plane/workflow/` |
-| **7. Authorization** | Policy → ephemeral AWS IAM credential issued | `control-plane/identity/` |
-| **8. Execution** | AWS API → stop 7 resources | `tool-gateway/` |
-| **9. Verification** | Agent checks: resources stopped? no critical service affected? | `agent-runtime/` |
-| **10. Audit** | Immutable log: who, why, policy, precedent, model, action, result | `control-plane/audit/` |
-| **11. Metrics** | Task cost: $0.82 │ AWS savings: $600/mo │ Human time saved: 45 min | `audit/` |
+| **Tier 1** | Describe, assess, scan references, query usage | Policy auto-approve |
+| **Tier 2** | Backup, deprecate (description change), rollback | Human approval required |
+| **Tier 3** | Delete custom field | Human approval + execution grant |
 
 ---
 
-## Folder Structure
+## Repository Structure
 
 ```
 cdm-os-salesforce-field-cleanup/
+├── services/
+│   ├── control_plane/           # FastAPI — the brain
+│   │   ├── src/control_plane/
+│   │   │   ├── main.py          # App entry point + lifespan
+│   │   │   ├── config.py        # Settings (env vars)
+│   │   │   ├── database.py      # SQLAlchemy engine + session
+│   │   │   ├── models.py        # ORM models (Proposal, Agent, etc.)
+│   │   │   ├── schemas.py       # Pydantic request/response DTOs
+│   │   │   ├── policy_engine.py # Deterministic YAML-driven rules
+│   │   │   ├── audit.py         # HMAC-signed, hash-chained audit log
+│   │   │   └── routes/          # API routers
+│   │   ├── database/init.sql    # DDL for PostgreSQL
+│   │   ├── policies/            # YAML policy definitions
+│   │   ├── tests/
+│   │   ├── Dockerfile
+│   │   └── pyproject.toml
+│   │
+│   └── tool_gateway/            # FastAPI — governed Salesforce access
+│       ├── src/tool_gateway/
+│       │   ├── api/             # Endpoints + service layer
+│       │   ├── auth.py          # Service-key auth + execution grants
+│       │   ├── salesforce/      # SF client, metadata, scanner, etc.
+│       │   └── proposals/       # Proposal-specific logic
+│       ├── tests/
+│       ├── Dockerfile
+│       └── pyproject.toml
 │
-├── .env.example                  # Environment variable template
-├── .gitignore                    # Git ignore rules
-├── docker-compose.yml            # Local dev stack (PostgreSQL + pgvector, Redis)
-├── requirements.txt              # Root Python dependencies
-├── CONTRIBUTING.md               # How to contribute, coding standards, PR process
-├── README.md                     # ← You are here
-│
-├── control-plane/                # LAYER 2 — The brain of CDM-OS
-│   ├── agents/                   #   Agent Registry ("Active Directory for AI agents")
-│   ├── identity/                 #   Agent Identity & IAM, ephemeral credentials
-│   ├── policy/                   #   Policy Decision Point (PDP) engine
-│   ├── workflow/                 #   Durable state machine / workflow engine
-│   ├── approvals/                #   Tier-based human approval routing
-│   ├── audit/                    #   Immutable audit event writer
-│   ├── api/                      #   FastAPI REST endpoints
-│   ├── database/                 #   PostgreSQL schemas & migrations
-│   └── tool-gateway/             #   Internal tool routing
-│
-├── agent-runtime/                # LAYER 3 — Controlled execution sandbox
-│
-├── agents/                       # LAYER 3 — Individual agent implementations
-│   └── field-cleanup/            #   Salesforce field cleanup agent
-│
-├── model-gateway/                # LAYER 4 — Hot-swappable LLM abstraction
-│
-├── knowledge/                    # LAYER 5 — Agent intelligence store
-│   └── rag/                      #   RAG pipeline, embeddings, vector store
-│
-├── tool-gateway/                 # LAYER 6 — Policy-enforced external access
-│   ├── mcp-gateway/              #   MCP routing & policy enforcement
-│   └── servers/                  #   Individual MCP tool servers
-│       └── salesforce/           #     Salesforce MCP server
-│
-├── infrastructure/               # LAYER 6 — IaC & deployment
-│   ├── terraform/                #   AWS infrastructure modules
-│   ├── iam/                      #   Ephemeral IAM role templates
-│   ├── event-bus/                #   EventBridge, SQS, SNS configs
-│   └── containers/               #   Dockerfiles & ECS task definitions
-│
-├── policy/                       # Policy definitions (YAML)
-│   ├── global.yaml               #   Global rules for all agents
-│   ├── tiers/                    #   Tier 1/2/3 specific rules
-│   ├── agents/                   #   Per-agent blast radius configs
-│   └── domains/                  #   Domain-wide policies (SRE, FinOps, etc.)
-│
-├── workflows/                    # Workflow definitions (YAML state machines)
-│
-├── audit/                        # LAYER 7 — Observability & reporting
-│   ├── schemas/                  #   Audit event JSON schemas
-│   ├── exporters/                #   Datadog, Splunk, CloudWatch exporters
-│   └── dashboards/               #   Grafana/Datadog dashboard configs
-│
-├── tests/                        # LAYER 7 — All test suites
-│   ├── unit/                     #   Unit tests per module
-│   ├── integration/              #   Cross-component integration tests
-│   ├── regression/               #   Model regression test suite
-│   └── evaluation/               #   Agent behavior evaluation
-│
-├── docs/                         # LAYER 1 — Human documentation
-│   ├── architecture/             #   Technical architecture docs
-│   ├── governance/               #   Governance handbooks
-│   ├── runbooks/                 #   Manual fallback procedures
-│   └── onboarding/               #   Getting started guides
-│
-└── frontend/                     # LAYER 1 — Guardian dashboard UI
-    └── field-cleanup/            #   Active Next.js dashboard
+├── frontend/field-cleanup/      # Next.js governance UI
+├── scripts/                     # Smoke tests & utilities
+├── docker-compose.yml
+├── Makefile
+└── docs/
+    └── roadmap.md               # Vision & future architecture
 ```
-
----
-
-## Security Model (§35)
-
-```
-Identity → Authorization → Policy Engine
-                               │
-                    ┌──────────┴──────────┐
-                    ▼                     ▼
-                 Network               Data
-                 Controls             Controls
-                    │                     │
-                    └──────────┬──────────┘
-                               ▼
-                          Tool Gateway
-                               │
-                               ▼
-                            Target
-```
-
-All access is:
-- **Identity-verified** — every agent has a unique, auditable identity
-- **Policy-evaluated** — deterministic rules, not LLM judgment
-- **Time-limited** — ephemeral credentials with auto-expiry
-- **Fully logged** — immutable audit trail for every action
-
----
-
-## Tier System — Agent Autonomy Levels
-
-| Tier | Autonomy | Approval | Example |
-|---|---|---|---|
-| **Tier 1** | None — output only | Every action requires human review | Agent generates a PR; human merges |
-| **Tier 2** | Plan-level | Human approves the plan | Agent proposes "stop 10 instances"; human approves |
-| **Tier 3** | Autonomous within policy | Policy engine decides | Agent auto-remediates within blast radius |
-
-**Graduation**: Tier 1 → 2 → 3 requires AIGB approval, evaluation tests, shadow mode, and regression pass.
 
 ---
 
 ## Getting Started
 
+### Prerequisites
+
+- Docker & Docker Compose
+- Python 3.11+
+- A Salesforce org with API access (connected app or JWT bearer flow)
+
+### Quick Start
+
 ```bash
-# 1. Clone and setup environment
-git clone <repo-url>
+# 1. Clone
+git clone https://github.com/harsh-codm/cdm-os-salesforce-field-cleanup.git
 cd cdm-os-salesforce-field-cleanup
-cp .env.example .env                    # Configure your environment
 
-# 2. Start local infrastructure
-docker-compose up -d                     # PostgreSQL + pgvector, Redis
+# 2. Configure
+cp .env.example .env
+# Edit .env — set Salesforce credentials, JWT secret, service key
 
-# 3. Install Python dependencies
-python -m venv .venv
-.venv/Scripts/activate                   # Windows
-pip install -r requirements.txt
+# 3. Start everything
+docker compose up -d
 
-# 4. Run the control plane API (from project root)
+# Control Plane: http://localhost:8000/docs
+# Tool Gateway:  http://localhost:8080/docs
+```
+
+### Development (without Docker)
+
+```bash
+# Control Plane
+cd services/control_plane
+pip install -e .
 uvicorn control_plane.main:app --reload --port 8000
 
-# 5. Run tests
-pytest
+# Tool Gateway (separate terminal)
+cd services/tool_gateway
+pip install -e .
+uvicorn tool_gateway.api:app --reload --port 8080
 ```
 
 ---
 
-## 🚀 Salesforce Field Cleanup Capability
+## Environment Variables
 
-The system implements a **3-Phase Safety & Reference Assessment Pipeline** before any custom field deletion proposal is sent for human review or execution:
+### Control Plane
 
-```
-               SALESFORCE FIELD CLEANUP ASSESSMENT PIPELINE
-               
-   ┌─────────────────────────────────────────────────────────────┐
-   │ Phase 1: Metadata Extraction                                │
-   │ Describe SObject, field type, label, nillable, custom flag  │
-   └──────────────────────────────┬──────────────────────────────┘
-                                  │
-                                  ▼
-   ┌─────────────────────────────────────────────────────────────┐
-   │ Phase 2: Data Usage Analysis                                │
-   │ Execute SOQL query to calculate % record population         │
-   └──────────────────────────────┬──────────────────────────────┘
-                                  │
-                                  ▼
-   ┌─────────────────────────────────────────────────────────────┐
-   │ Phase 3: Metadata & Code Reference Scan                     │
-   │ Scan Apex Classes, Triggers, Flows, Validation Rules,       │
-   │ Page Layouts, and Field History Tracking via Tooling API    │
-   └──────────────────────────────┬──────────────────────────────┘
-                                  │
-                                  ▼
-   ┌─────────────────────────────────────────────────────────────┐
-   │ Risk Classification & Report Generation                     │
-   │ - SAFE_TO_DELETE: 0% data + 0 references + no tracking     │
-   │ - NEEDS_REVIEW:   0% data + on layout / history tracked     │
-   │ - BLOCKED:        Referenced in Apex / Flow / Validation    │
-   └─────────────────────────────────────────────────────────────┘
-```
+| Variable | Required | Description |
+|---|---|---|
+| `CDM_ENV` | No | `development` (default) / `staging` / `production` |
+| `POSTGRES_HOST` | Yes | PostgreSQL host |
+| `POSTGRES_PORT` | No | Default `5432` |
+| `POSTGRES_DB` | Yes | Database name |
+| `POSTGRES_USER` | Yes | Database user |
+| `POSTGRES_PASSWORD` | Yes | Database password (**no defaults in production**) |
+| `CDM_JWT_SECRET` | Yes | JWT signing secret (**no defaults in production**) |
+| `AUDIT_HMAC_SECRET` | Yes | HMAC key for audit log signing (**no defaults in production**) |
+| `GATEWAY_SERVICE_KEY` | Yes | Shared secret for Control Plane → Tool Gateway auth |
+| `POLICY_MODE` | No | `enforcing` (default) / `audit_only` |
 
-### Reference Scanner Capabilities
+### Tool Gateway
 
-The **Apex Reference Scanner** (`tool-gateway/servers/salesforce/apex_references.py`) checks 6 metadata layers before allowing deletion:
-1. **Apex Classes**: Code body scan for field API name references.
-2. **Apex Triggers**: Trigger body scan on the target SObject.
-3. **Flows & Process Builders**: Tooling API query (`MetadataComponentDependency`).
-4. **Validation Rules**: Formula scanning on target SObject.
-5. **Page & Compact Layouts**: Layout dependency scan via Tooling API.
-6. **Field History Tracking**: Audit tracking verification.
+| Variable | Required | Description |
+|---|---|---|
+| `GATEWAY_SERVICE_KEY` | Yes | Must match the Control Plane's key |
+| `SF_USERNAME` | Yes | Salesforce API user |
+| `SF_PASSWORD` | Yes | Salesforce password |
+| `SF_SECURITY_TOKEN` | Yes | Salesforce security token |
+| `SF_DOMAIN` | No | `login` (default) or `test` for sandbox |
+| `SF_CONSUMER_KEY` | No | For JWT bearer flow (preferred in production) |
+| `SF_PRIVATE_KEY_PATH` | No | PEM file path for JWT bearer flow |
+
+> **Security:** In non-development environments, the Control Plane refuses to start if any secret still has its default value.
 
 ---
 
-## 📚 Documentation References
+## Governance UI
 
-- **[SETUP.md](./SETUP.md)** — Complete step-by-step installation, environment configuration, database migration, and test runner instructions.
-- **[FRONTEND_DEVELOPER_GUIDE.md](./FRONTEND_DEVELOPER_GUIDE.md)** — Full guide for frontend engineers, detailing Control Plane API endpoints, TypeScript interfaces, WebSocket event listeners, and human approval workflows.
-- **[SETUP_AND_FIXES.md](./SETUP_AND_FIXES.md)** — Technical summary of ORM portability fixes (SQLite/PostgreSQL `GUID` type helper) and Tool Gateway integration details.
+The Next.js dashboard is in `frontend/field-cleanup/`:
 
----
-
-## Key Concepts
-
-| Concept | Definition |
-|---|---|
-| **Guardian** | Human responsible for an individual agent or agent pod |
-| **Skill Lead** | Human responsible for a domain (e.g., SRE Skill Lead) |
-| **AIGB** | AI Governance Board — approves Tier 3 graduation, high-risk capabilities, global policies |
-| **Tier System** | Tier 1 (generate → PR → human review), Tier 2 (plan → human approval → execute), Tier 3 (autonomous within policy) |
-| **PDP** | Policy Decision Point — every agent action is evaluated: ALLOW / DENY / ESCALATE |
-| **Blast Radius** | Machine-readable limits on what an agent can affect (max resources, max cost, allowed envs) |
-| **Digital Boardroom** | Arbitration mechanism when agents disagree (e.g., SRE says scale up, FinOps says scale down) |
-| **Kill Switch** | Centralized stop mechanism — individual agent, pod, capability, or global emergency stop |
-| **Hot-Swappable Brain** | Model Gateway abstraction — change `MODEL_VERSION=claude-4` without touching any agent |
-| **Agent Multiplier** | Metric: does the agent save more value than it costs? (Task cost vs. human time saved) |
-| **Drift** | Behavioral change from model/prompt/knowledge updates — detected by regression tests |
-| **Precedent** | Historical decision with TTL — agents reference but don't blindly follow |
-
----
-
-## Contributing
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for development guidelines, coding standards, and PR process.
-
-
-
-## Next.js Governance UI
-
-The active dashboard is in `frontend/field-cleanup/` (Next.js).
-
-```sh
+```bash
 cd frontend/field-cleanup
 npm install
-npm run dev
+npm run dev    # http://localhost:3000
 ```
 
-Open http://localhost:3000 with the local control plane on port 8000 and tool gateway on port 8080.
+Features:
+- **Approval Queue** — field metadata, population stats, dependency evidence, approve/reject
+- **Proposals** — status filtering, pagination, execution controls
+- **Audit Trail** — filtered CSV export, printable reports, payload signature verification
 
-- **Approval Queue:** live field metadata, population and dependency evidence, reviewer decisions, and execution follow-up.
-- **Proposals:** status filtering, pagination, mobile cards, approved execution controls, results and activity timelines.
-- **Audit Trail:** filtered CSV downloads, printable reports (choose Save as PDF), and server-side payload signature verification.
+---
 
-These views poll for updates while the browser tab is visible; WebSocket delivery still requires backend support. Reports cover filtered events from the latest 500 audit records. Signature verification covers event payloads, not the complete audit record or log ordering. Failed executions require reviewing Salesforce state before creating another proposal.
+## Field Lifecycle
+
+```
+  Custom Field
+       │
+       ▼
+  ┌─────────┐    Tier-1    ┌───────────┐
+  │  ASSESS  │ ──────────► │ Report:   │
+  │          │  auto-run   │ SAFE /    │
+  └─────────┘              │ REVIEW /  │
+                           │ BLOCKED   │
+                           └─────┬─────┘
+                                 │ if SAFE or REVIEW
+                                 ▼
+                         ┌──────────────┐    Tier-2
+                         │  DEPRECATE   │ ◄── human approval
+                         │  (desc only) │
+                         └──────┬───────┘
+                                │
+                                ▼
+                         ┌──────────────┐    Tier-3
+                         │   DELETE     │ ◄── human approval
+                         │              │     + execution grant
+                         └──────────────┘
+```
+
+---
+
+## Security Model
+
+- **Service-to-service auth** — `X-Service-Key` header on all Tool Gateway calls
+- **Execution grants** — HMAC-SHA256 signed, one-time-use tokens with nonce replay protection
+- **Atomic execution** — conditional `UPDATE` prevents double-execution race conditions
+- **Fail-closed rate limiting** — DB errors → deny, not allow
+- **Audit integrity** — HMAC-signed entries with hash chain; `/audit/verify-chain` endpoint
+- **No default secrets** — startup validation blocks production with dev credentials
+- **`.dockerignore`** — `.env` and `*.pem` excluded from images
+
+---
+
+## API Quick Reference
+
+### Control Plane (`:8000`)
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/v1/proposals` | Submit a new proposal |
+| GET | `/api/v1/proposals` | List proposals (filterable) |
+| POST | `/api/v1/proposals/{id}/approve` | Human approve a proposal |
+| POST | `/api/v1/proposals/{id}/reject` | Reject a proposal |
+| POST | `/api/v1/proposals/{id}/execute` | Execute an approved proposal |
+| GET | `/api/v1/audit` | Query audit log |
+| GET | `/api/v1/audit/verify-chain` | Verify audit log integrity |
+| GET | `/health` | Liveness check |
+
+### Tool Gateway (`:8080`)
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/tools/salesforce/full-assessment` | Full field safety assessment |
+| POST | `/tools/salesforce/describe` | Describe SObject metadata |
+| POST | `/tools/salesforce/field-usage` | Query field population % |
+| POST | `/tools/salesforce/scan-references` | Scan Apex/Flow/Layout references |
+| POST | `/tools/salesforce/deprecate` | Deprecate a custom field |
+| POST | `/tools/salesforce/delete` | Delete a custom field |
+| POST | `/tools/salesforce/rollback` | Rollback a field description |
+| POST | `/tools/execute` | Generic governed tool execution |
+| GET | `/health` | Liveness check |
+| GET | `/health/salesforce` | Deep Salesforce connectivity check |
+
+---
+
+## Roadmap
+
+See [docs/roadmap.md](./docs/roadmap.md) for the long-term vision including agent runtime, model gateway, knowledge plane, and multi-domain tool support.

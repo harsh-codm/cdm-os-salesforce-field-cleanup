@@ -1,1 +1,0 @@
-"""FieldPro MCP Server Package."""
