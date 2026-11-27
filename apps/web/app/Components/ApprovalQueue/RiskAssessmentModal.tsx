@@ -10,16 +10,8 @@ interface RiskAssessmentModalProps {
   row: QueueRow | null;
   onClose: () => void;
   initialDecision?: "approve" | "reject";
-  onApprove?: (
-    row: QueueRow,
-    reason: string,
-    reviewerEmail: string,
-  ) => Promise<void>;
-  onReject?: (
-    row: QueueRow,
-    reason: string,
-    reviewerEmail: string,
-  ) => Promise<void>;
+  onApprove?: (row: QueueRow, reason: string) => Promise<void>;
+  onReject?: (row: QueueRow, reason: string) => Promise<void>;
 }
 
 export default function RiskAssessmentModal({
@@ -34,7 +26,6 @@ export default function RiskAssessmentModal({
   const [decision, setDecision] = useState<"approve" | "reject" | null>(
     initialDecision ?? null,
   );
-  const [reviewerEmail, setReviewerEmail] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -70,17 +61,11 @@ export default function RiskAssessmentModal({
 
   if (!isOpen || !row) return null;
 
-  const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(reviewerEmail.trim());
-
   const submit = async () => {
-    if (!decision || !validEmail || reason.trim().length < 8 || busy) return;
+    if (!decision || reason.trim().length < 8 || busy) return;
     setBusy(true);
     try {
-      await (decision === "approve" ? onApprove : onReject)?.(
-        row,
-        reason.trim(),
-        reviewerEmail.trim(),
-      );
+      await (decision === "approve" ? onApprove : onReject)?.(row, reason.trim());
     } catch {
       // The parent displays the API error; keep this dialog open for retry.
     } finally {
@@ -182,10 +167,11 @@ export default function RiskAssessmentModal({
           </section>
           <FieldEvidence key={row.id} payload={row.proposal.input_payload} />
           <section>
-            <label htmlFor="reviewer-email" className="mb-2 block text-sm font-semibold text-white">Reviewer email (required)</label>
-            <input id="reviewer-email" type="email" autoComplete="email" required disabled={busy}
-              value={reviewerEmail} onChange={(event) => setReviewerEmail(event.target.value)}
-              className="mb-4 w-full rounded-md border border-slate-700 bg-slate-950 p-2 text-sm text-slate-200" />
+            {/* The Control Plane records the reviewer from the signed-in identity
+                (bearer token); a typed email was never used, so don't ask for one. */}
+            <p className="mb-4 text-xs text-slate-400">
+              Your decision is recorded and audited under your signed-in identity.
+            </p>
             <label
               htmlFor="approval-reason"
               className="mb-2 block text-sm font-semibold text-white"
@@ -224,7 +210,7 @@ export default function RiskAssessmentModal({
                   Approve Remediation
                 </span>
                 <span className="mt-0.5 text-xs text-blue-200">
-                  (Approve and dispatch)
+                  (Execute later from Proposals)
                 </span>
               </button>
 
@@ -247,7 +233,7 @@ export default function RiskAssessmentModal({
             type="button"
             onClick={() => void submit()}
             disabled={
-              !decision || !validEmail || reason.trim().length < 8 || busy
+              !decision || reason.trim().length < 8 || busy
             }
             className={`rounded-md px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40 ${
               decision === "reject"

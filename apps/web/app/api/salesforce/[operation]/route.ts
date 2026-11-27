@@ -1,3 +1,4 @@
+import { gatewayHeaders } from "../../../lib/server/gatewayAuth";
 const OPERATIONS = {
   "describe-global": "/tools/salesforce/describe-global",
   describe: "/tools/salesforce/describe",
@@ -73,8 +74,8 @@ export async function POST(
       `${gatewayUrl}${OPERATIONS[operation as Operation]}`,
       {
         method: "POST",
-        ...(operation === "describe-global" ? {} : {
-          headers: { "Content-Type": "application/json" },
+        ...(operation === "describe-global" ? { headers: gatewayHeaders() } : {
+          headers: gatewayHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify(payload),
         }),
         cache: "no-store",

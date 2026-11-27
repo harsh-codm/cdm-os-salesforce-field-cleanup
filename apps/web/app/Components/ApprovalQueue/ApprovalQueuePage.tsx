@@ -106,12 +106,16 @@ export default function ApprovalQueuePage() {
     [reload, subscribe],
   );
 
-  const handleDecision = async (row: QueueRow, decision: "approve" | "reject", reason: string, reviewerEmail: string) => {
+  const handleDecision = async (row: QueueRow, decision: "approve" | "reject", reason: string) => {
     try {
-      const result = await GovernanceAPI.submitDecision(row.id, decision === "approve" ? "APPROVED" : "REJECTED", reason, reviewerEmail);
+      const result = await GovernanceAPI.submitDecision(row.id, decision === "approve" ? "APPROVED" : "REJECTED", reason);
       source.setData((previous) => previous.filter((proposal) => proposal.id !== row.id));
       setSelectedRow(null);
-      toast.success(`Decision recorded: ${result.status} at ${result.decided_at}`);
+      toast.success(
+        decision === "approve"
+          ? `Approved at ${result.decided_at}. Execute it from Proposals when ready.`
+          : `Decision recorded: ${result.status} at ${result.decided_at}`,
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to record decision.");
       throw error;
@@ -240,12 +244,8 @@ export default function ApprovalQueuePage() {
         row={selectedRow}
         onClose={() => setSelectedRow(null)}
         initialDecision={initialDecision}
-        onApprove={(row, reason, reviewerEmail) =>
-          handleDecision(row, "approve", reason, reviewerEmail)
-        }
-        onReject={(row, reason, reviewerEmail) =>
-          handleDecision(row, "reject", reason, reviewerEmail)
-        }
+        onApprove={(row, reason) => handleDecision(row, "approve", reason)}
+        onReject={(row, reason) => handleDecision(row, "reject", reason)}
       />
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Bell,
   CircleUserRound,
@@ -202,7 +203,18 @@ export default function Head({
 
       {/* Title — short on mobile, full on md+ */}
       <div className="order-2 flex min-w-0 flex-1 items-center gap-2">
-        <h1 className="min-w-0 flex-1 truncate text-sm font-bold text-slate-100 sm:text-base">
+        <Link
+          href="/"
+          aria-label="CDM-OS home"
+          title="Back to CDM-OS home"
+          className="shrink-0 text-[#e6ecf7] transition-colors hover:text-[#60e1ff]"
+        >
+          <svg viewBox="0 0 32 32" className="h-7 w-7" aria-hidden="true">
+            <path d="M16 2 30 16 16 30 2 16Z" fill="none" stroke="currentColor" strokeWidth="2" />
+            <path d="M11 13.5h7M11 17h10M11 20.5h7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </Link>
+        <h1 className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-slate-100 sm:text-base">
           <span className="md:hidden">{shortTitle}</span>
           <span className="hidden md:inline">{title}</span>
         </h1>
