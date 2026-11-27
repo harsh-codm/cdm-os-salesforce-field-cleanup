@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import Head from "./Head";
 import LeftSideBar from "./LeftSideBar";
 import RightSideSection from "./RightSideSection";
+import { ConsoleNavContext } from "./ConsoleNav";
 import { DEFAULT_NAV_ID, NAV_IDS } from "./navigation"; // ← values only
 import type { NavId } from "./navigation"; // ← type only
 import { useApiResource } from "@/app/lib/api/useApiResource";
@@ -290,6 +291,7 @@ export default function MainPage() {
           onToggleTheme={toggleTheme}
         />
 
+        <ConsoleNavContext.Provider value={navigateTo}>
         <RightSideSection
           activePage={activePage}
           dependencyViewerVisited={dependencyViewerVisited}
@@ -304,6 +306,7 @@ export default function MainPage() {
             navigateTo("DependencyViewer");
           }}
         />
+        </ConsoleNavContext.Provider>
       </div>
     </div>
   );
