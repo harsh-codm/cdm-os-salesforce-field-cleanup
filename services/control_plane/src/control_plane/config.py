@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     MCP_GATEWAY_PORT: int = 8080
     MCP_GATEWAY_URL: str = "http://127.0.0.1:8080"
     GATEWAY_SERVICE_KEY: str = ""  # Shared secret for control-plane → tool-gateway auth
+    # Shared with the Tool Gateway. Signs one-time execution grants for mutating
+    # tools (delete / deprecate / rollback). Empty = grants disabled (dev only).
+    EXECUTION_GRANT_SECRET: str = ""
+    EXECUTION_GRANT_TTL_SEC: int = 120
     MCP_REQUEST_TIMEOUT_SEC: int = 30
     FIELD_ASSESSMENT_TIMEOUT_SEC: int = 180
 
@@ -85,6 +89,7 @@ class Settings(BaseSettings):
             "AUDIT_HMAC_SECRET": "hmac-signing-key-for-audit-trail",
             "POSTGRES_PASSWORD": "cdm_secure_password",
             "GATEWAY_SERVICE_KEY": "",
+            "EXECUTION_GRANT_SECRET": "",
         }
         violations = [
             name for name, default_val in _DEFAULTS.items()

@@ -116,6 +116,38 @@ def _verify_grant(grant_json: str, request_body: Dict[str, Any]) -> Dict[str, An
     return grant
 
 
+def enforce_execution_grant(
+    grant_header: Optional[str],
+    request_body: Dict[str, Any],
+    tool_id: str,
+) -> Dict[str, Any]:
+    """Require a valid grant, issued for this tool, before a mutating call.
+
+    Previously grants were verified only *if* the header was present, so any
+    caller holding the service key could delete a field. Without a configured
+    secret (allowed only when CDM_ENV=development — settings refuses to start
+    otherwise) the check is skipped with a warning.
+    """
+    if not _get_grant_secret():
+        logger.warning(
+            "EXECUTION_GRANT_SECRET is not set — %s allowed without a grant (development only)",
+            tool_id,
+        )
+        return {}
+    if not grant_header:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Execution grant required for mutating tool '{tool_id}'.",
+        )
+    grant = _verify_grant(grant_header, request_body)
+    if grant.get("tool_id") != tool_id:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Execution grant was issued for '{grant.get('tool_id')}', not '{tool_id}'.",
+        )
+    return grant
+
+
 # Mutating tools that require an execution grant
 MUTATING_TOOLS = {
     "salesforce_deprecate_field",

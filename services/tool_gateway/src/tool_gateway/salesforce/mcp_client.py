@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 from typing import Dict, Any, List, Optional
 from fastmcp import Client
@@ -19,9 +20,13 @@ class SalesforceMCPClient:
     """
 
     def _create_transport(self):
+        # The MCP stdio launcher otherwise starts the child with a minimal
+        # environment, which drops PYTHONPATH (module not found) and the SF_*
+        # credentials the server needs to log in.
         return StdioTransport(
             command=sys.executable,
-            args=["-m", "servers.salesforce.server"],
+            args=["-m", "tool_gateway.salesforce.server"],
+            env=dict(os.environ),
         )
 
     async def _call_tool(
@@ -96,6 +101,23 @@ class SalesforceMCPClient:
         return await self._call_tool(
             "salesforce_deprecate_field",
             {"object_name": object_name, "field_name": field_name, "reason": reason}
+        )
+
+    async def delete_field(
+        self,
+        object_name: str,
+        field_name: str,
+        confirm_delete: bool,
+        reason: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return await self._call_tool(
+            "salesforce_delete_field",
+            {
+                "object_name": object_name,
+                "field_name": field_name,
+                "confirm_delete": confirm_delete,
+                "reason": reason,
+            },
         )
 
     async def rollback_field(self, backup_id: str) -> Dict[str, Any]:

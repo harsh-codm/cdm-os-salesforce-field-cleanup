@@ -189,8 +189,9 @@ class SalesforceClient:
         ):
             queries.append(f"SELECT Name FROM User WHERE Id = '{user_id}' LIMIT 1")
 
-        if isinstance(self.username, str) and self.username.strip():
-            escaped_username = self.username.strip().replace("\\", "\\\\").replace("'", "\\'")
+        username = getattr(self, "username", None)
+        if isinstance(username, str) and username.strip():
+            escaped_username = username.strip().replace("\\", "\\\\").replace("'", "\\'")
             queries.append(
                 "SELECT Name FROM User "
                 f"WHERE Username = '{escaped_username}' LIMIT 1"

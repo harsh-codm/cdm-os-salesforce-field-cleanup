@@ -126,9 +126,9 @@ def verify_entry(entry: AuditLog, expected_prev_hash: Optional[str] = None) -> b
     """
     prev_hash = (entry.payload or {}).get("_prev_hash", "0" * 64)
 
-    # Reconstruct the payload without the internal chain key for signing
+    # record_event signs the payload *before* adding the internal chain key, so
+    # strip it again here (re-adding it made every signature mismatch).
     clean_payload = {k: v for k, v in (entry.payload or {}).items() if k != "_prev_hash"}
-    clean_payload["_prev_hash"] = prev_hash
 
     message = _canonical_message(
         entry.event_type,
@@ -166,13 +166,31 @@ def verify_chain(db: Session, limit: int = 1000) -> dict:
     )
 
     prev_hash = "0" * 64  # Genesis
-    for entry in entries:
-        if not verify_entry(entry, expected_prev_hash=prev_hash):
+    legacy = 0
+    chain_started = False
+    for index, entry in enumerate(entries):
+        is_chained = "_prev_hash" in (entry.payload or {})
+        if not is_chained and not chain_started:
+            # Written before hash-chaining existed: its signature uses the old
+            # scheme and cannot be checked here. The writer still chained the
+            # next entry to it, so carry its signature forward.
+            legacy += 1
+            prev_hash = entry.hmac_signature or prev_hash
+            continue
+        chain_started = True
+        # An unchained row after the chain began is a break (e.g. stripped key).
+        if not is_chained or not verify_entry(entry, expected_prev_hash=prev_hash):
             return {
                 "valid": False,
-                "checked": entries.index(entry) + 1,
+                "checked": index + 1,
+                "legacy_unverified": legacy,
                 "broken_at": str(entry.id),
             }
         prev_hash = entry.hmac_signature
 
-    return {"valid": True, "checked": len(entries), "broken_at": None}
+    return {
+        "valid": True,
+        "checked": len(entries),
+        "legacy_unverified": legacy,
+        "broken_at": None,
+    }
