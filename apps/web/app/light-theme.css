@@ -253,3 +253,7 @@ html[data-theme="light"] :is(input, textarea)::placeholder { color: #64748b !imp
 html[data-theme="light"] :is(button, a, input, textarea, select):focus-visible { outline-color: #2563eb; }
 html[data-theme="light"] [class~="text-white"][class~="bg-red-500"] { color: white !important; }
 html[data-theme="light"] [class*="backdrop:bg-black"]::backdrop { background-color: rgb(15 23 42 / 50%); }
+
+/* Console header brand mark (hard-coded light for the dark theme) */
+html[data-theme="light"] [class~="text-[#e6ecf7]"] { color: #0f172a !important; }
+html[data-theme="light"] [class~="hover:text-[#60e1ff]"]:hover { color: #1d4ed8 !important; }

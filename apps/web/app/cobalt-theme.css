@@ -1,0 +1,109 @@
+/*
+ * Midnight Cobalt — the console's default (dark) skin, matching the landing page.
+ *
+ * Tailwind v4 utilities read colours from --color-* variables, so redefining the
+ * neutral scales (slate/gray) here re-skins every component without touching its
+ * class names. The accent is Tailwind's own blue (cobalt), so blue utilities are
+ * left as-is. Semantic colours (emerald, amber, rose, violet…) are untouched so
+ * status meaning is preserved. Light mode keeps the overrides in light-theme.css.
+ */
+
+html:not([data-theme="light"]) {
+  /* Navy-tinted neutrals */
+  --color-slate-50: #f5f8fc;
+  --color-slate-100: #e6ecf7;
+  --color-slate-200: #cdd7e8;
+  --color-slate-300: #a9b7d0;
+  --color-slate-400: #7f8fae;
+  --color-slate-500: #5b6a89;
+  --color-slate-600: #414e6b;
+  --color-slate-700: #2c3752;
+  --color-slate-800: #1b243a;
+  --color-slate-900: #111a2d;
+  --color-slate-950: #0a1120;
+
+  --color-gray-50: var(--color-slate-50);
+  --color-gray-100: var(--color-slate-100);
+  --color-gray-200: var(--color-slate-200);
+  --color-gray-300: var(--color-slate-300);
+  --color-gray-400: var(--color-slate-400);
+  --color-gray-500: var(--color-slate-500);
+  --color-gray-600: var(--color-slate-600);
+  --color-gray-700: var(--color-slate-700);
+  --color-gray-800: var(--color-slate-800);
+  --color-gray-900: var(--color-slate-900);
+  --color-gray-950: var(--color-slate-950);
+
+  --background: #070b16;
+  --foreground: #e6ecf7;
+}
+
+/* App shell surfaces that use arbitrary hex values */
+html:not([data-theme="light"]) [class~="bg-[#111319]"] {
+  background-color: #070b16;
+  background-image:
+    radial-gradient(90% 55% at 100% 0%, rgb(59 130 246 / 10%), transparent 60%),
+    radial-gradient(60% 40% at 0% 100%, rgb(96 225 255 / 5%), transparent 70%);
+}
+html:not([data-theme="light"]) [class~="bg-[#080d18]"] { background-color: #060a14; }
+html:not([data-theme="light"]) [class~="bg-[#1c1e26]"] { background-color: #111a2d; }
+html:not([data-theme="light"]) [class~="bg-[#22252e]"] { background-color: #172238; }
+
+/* Header: glassy cobalt band with a hairline, like the landing nav */
+html:not([data-theme="light"]) [class~="bg-[#0D1C42]"] {
+  background-color: rgb(9 14 27 / 85%);
+  background-image: linear-gradient(90deg, rgb(59 130 246 / 18%), transparent 45%, rgb(96 225 255 / 8%));
+  backdrop-filter: blur(14px);
+  border-bottom-color: rgb(230 236 247 / 12%);
+}
+
+/* Sidebar: hairline edge, active item gets the boxed corner-bracket treatment */
+html:not([data-theme="light"]) #main-navigation {
+  background-color: rgb(10 17 32 / 94%);
+  border-right-color: rgb(230 236 247 / 9%);
+}
+html:not([data-theme="light"]) #main-navigation [aria-current="page"] {
+  position: relative;
+  border-radius: 2px;
+  border-color: rgb(230 236 247 / 14%);
+  background: linear-gradient(90deg, rgb(59 130 246 / 24%), rgb(59 130 246 / 4%));
+  color: #e6ecf7;
+}
+html:not([data-theme="light"]) #main-navigation [aria-current="page"]::before,
+html:not([data-theme="light"]) #main-navigation [aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border: 0 solid #e6ecf7;
+  pointer-events: none;
+}
+html:not([data-theme="light"]) #main-navigation [aria-current="page"]::before {
+  top: -1px;
+  left: -1px;
+  border-top-width: 1px;
+  border-left-width: 1px;
+}
+html:not([data-theme="light"]) #main-navigation [aria-current="page"]::after {
+  right: -1px;
+  bottom: -1px;
+  border-right-width: 1px;
+  border-bottom-width: 1px;
+}
+
+/* Sharper cards to match the landing page's hairline frames */
+html:not([data-theme="light"]) [class~="bg-[#080d18]"] :is(.rounded-xl, .rounded-2xl) {
+  border-radius: 6px;
+}
+
+html:not([data-theme="light"]) ::selection {
+  background: rgb(59 130 246 / 40%);
+}
+
+html:not([data-theme="light"]) :is(button, a, input, textarea, select):focus-visible {
+  outline-color: #60e1ff;
+}
+
+html:not([data-theme="light"]) * {
+  scrollbar-color: #2c3752 transparent;
+}

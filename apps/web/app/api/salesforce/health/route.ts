@@ -1,3 +1,4 @@
+import { gatewayHeaders } from "../../../lib/server/gatewayAuth";
 import { decodeGatewayResponse } from "../../../lib/api/gatewayResponse";
 
 export async function GET() {
@@ -10,6 +11,7 @@ export async function GET() {
 
   try {
     const response = await fetch(`${gatewayUrl}/health`, {
+      headers: gatewayHeaders(),
       cache: "no-store",
       signal: AbortSignal.timeout(5000),
     });

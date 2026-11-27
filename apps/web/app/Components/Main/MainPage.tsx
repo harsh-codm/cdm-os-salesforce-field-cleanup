@@ -5,7 +5,8 @@ import { usePathname } from "next/navigation";
 import Head from "./Head";
 import LeftSideBar from "./LeftSideBar";
 import RightSideSection from "./RightSideSection";
-import { DEFAULT_NAV_ID } from "./navigation"; // ← value only
+import { ConsoleNavContext } from "./ConsoleNav";
+import { DEFAULT_NAV_ID, NAV_IDS } from "./navigation"; // ← values only
 import type { NavId } from "./navigation"; // ← type only
 import { useApiResource } from "@/app/lib/api/useApiResource";
 import { useRealtime } from "@/app/lib/ws/RealtimeProvider";
@@ -159,12 +160,25 @@ export default function MainPage() {
 
   const navigateTo = (page: NavId) => {
     setActivePage(page === "ApprovalQueue" || page === "AuditLog" ? DEFAULT_NAV_ID : page);
-    const target = page === "ApprovalQueue" ? "/approvals" : page === "AuditLog" ? "/audit" : "/";
+    const target = page === "ApprovalQueue" ? "/approvals" : page === "AuditLog" ? "/audit" : "/console";
     if (pathname !== target) window.history.pushState(null, "", target);
     if (page === "DependencyViewer") setDependencyViewerVisited(true);
     if (page === "FieldTools") setFieldToolsVisited(true);
     setNotificationsOpen(false);
   };
+
+  // Deep links from the landing page: /console?view=FieldTools
+  useEffect(() => {
+    const view = new URLSearchParams(window.location.search).get("view");
+    if (!view || !(NAV_IDS as readonly string[]).includes(view)) return;
+    const page = view as NavId;
+    const openView = window.setTimeout(() => {
+      if (page === "DependencyViewer") setDependencyViewerVisited(true);
+      if (page === "FieldTools") setFieldToolsVisited(true);
+      if (page !== "ApprovalQueue" && page !== "AuditLog") setActivePage(page);
+    }, 0);
+    return () => window.clearTimeout(openView);
+  }, []);
 
   useEffect(() => {
     const storedTheme = window.localStorage.getItem("cdm-os-theme");
@@ -277,6 +291,7 @@ export default function MainPage() {
           onToggleTheme={toggleTheme}
         />
 
+        <ConsoleNavContext.Provider value={navigateTo}>
         <RightSideSection
           activePage={activePage}
           dependencyViewerVisited={dependencyViewerVisited}
@@ -291,6 +306,7 @@ export default function MainPage() {
             navigateTo("DependencyViewer");
           }}
         />
+        </ConsoleNavContext.Provider>
       </div>
     </div>
   );

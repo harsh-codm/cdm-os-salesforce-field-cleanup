@@ -300,3 +300,26 @@ test("gateway health preserves explicit Salesforce failures and rejects unhealth
     assert.equal((await route.GET()).status, 503);
   }
 });
+
+test("gateway calls carry the server-side service key only when configured", async () => {
+  const seen = [];
+  const spy = async (url, options) => {
+    seen.push(options?.headers ?? {});
+    return Response.json({ result: "ok" });
+  };
+  const withKey = { TOOL_GATEWAY_URL: "http://gateway.test:8080/", GATEWAY_SERVICE_KEY: " svc-key " };
+
+  const op = loadRoute("app/api/salesforce/[operation]/route.ts", spy, withKey);
+  await op.POST(request({ object_name: "Account", field_name: "Legacy__c" }), {
+    params: Promise.resolve({ operation: "field-metadata" }),
+  });
+  await op.POST(request({}), { params: Promise.resolve({ operation: "describe-global" }) });
+  await loadRoute("app/api/salesforce/tools/route.ts", spy, withKey).GET();
+
+  assert.deepEqual(seen.map((h) => h["X-Service-Key"]), ["svc-key", "svc-key", "svc-key"]);
+  assert.equal(seen[0]["Content-Type"], "application/json");
+
+  seen.length = 0;
+  await loadRoute("app/api/salesforce/tools/route.ts", spy).GET();
+  assert.equal(seen[0]["X-Service-Key"], undefined);
+});

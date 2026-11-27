@@ -18,11 +18,8 @@ import AuditLogPage from "../AuditLog/AuditLogPage";
 import SettingsPage from "../Settings/SettingsPage";
 import DependencyViewerPage from "../DependencyViewer/DependencyViewerPage";
 import FieldToolsPage from "../FieldTools/FieldToolsPage";
-import {
-  AgentsPage,
-  OverviewPage,
-  PolicyPage,
-} from "../Governance/GovernancePages";
+import { AgentsPage, PolicyPage } from "../Governance/GovernancePages";
+import BentoOverview from "../Dashboard/BentoOverview";
 
 export const NAV_IDS = [
   "Dashboard",
@@ -46,7 +43,7 @@ export interface NavItem {
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { id: "Dashboard",        label: "Overview",           icon: LayoutDashboard,   Component: OverviewPage },
+  { id: "Dashboard",        label: "Overview",           icon: LayoutDashboard,   Component: BentoOverview },
   { id: "Agents",           label: "Agents",             icon: Bot,               Component: AgentsPage },
   { id: "ApprovalQueue",    label: "Approval Queue",     icon: Users,             Component: ApprovalQueuePage },
   { id: "Proposals",        label: "Proposals",          icon: ClipboardList,     Component: ProposalsPage },

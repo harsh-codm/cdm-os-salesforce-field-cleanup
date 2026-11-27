@@ -7,7 +7,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from .service import ToolGatewayService
-from tool_gateway.auth import verify_service_key, _verify_grant, MUTATING_TOOLS, _GRANT_HEADER
+from tool_gateway.auth import verify_service_key, enforce_execution_grant, MUTATING_TOOLS, _GRANT_HEADER
 from tool_gateway.settings import settings
 
 logger = logging.getLogger("tool_gateway.api")
@@ -195,9 +195,11 @@ async def deprecate_field(
     raw_request: Request,
     _key: str = Depends(verify_service_key),
 ):
-    grant_header = raw_request.headers.get(_GRANT_HEADER)
-    if grant_header:
-        _verify_grant(grant_header, request.model_dump(exclude_none=True))
+    enforce_execution_grant(
+        raw_request.headers.get(_GRANT_HEADER),
+        request.model_dump(exclude_none=True),
+        "salesforce_deprecate_field",
+    )
     try:
         return await gateway.deprecate_field(request.object_name, request.field_name, request.reason)
     except ValueError as exc:
@@ -212,9 +214,11 @@ async def delete_field(
     raw_request: Request,
     _key: str = Depends(verify_service_key),
 ):
-    grant_header = raw_request.headers.get(_GRANT_HEADER)
-    if grant_header:
-        _verify_grant(grant_header, request.model_dump(exclude_none=True))
+    enforce_execution_grant(
+        raw_request.headers.get(_GRANT_HEADER),
+        request.model_dump(exclude_none=True),
+        "salesforce_delete_field",
+    )
     try:
         return await gateway.delete_field(
             request.object_name,
@@ -234,9 +238,11 @@ async def rollback_field(
     raw_request: Request,
     _key: str = Depends(verify_service_key),
 ):
-    grant_header = raw_request.headers.get(_GRANT_HEADER)
-    if grant_header:
-        _verify_grant(grant_header, request.model_dump(exclude_none=True))
+    enforce_execution_grant(
+        raw_request.headers.get(_GRANT_HEADER),
+        request.model_dump(exclude_none=True),
+        "salesforce_rollback_field",
+    )
     try:
         return await gateway.rollback_field(request.backup_id)
     except ValueError as exc:
@@ -265,13 +271,11 @@ async def execute_tool(
     _key: str = Depends(verify_service_key),
 ):
     if request.tool_name in MUTATING_TOOLS:
-        grant_header = raw_request.headers.get(_GRANT_HEADER)
-        if not grant_header:
-            raise HTTPException(
-                status_code=403,
-                detail=f"Execution grant required for mutating tool '{request.tool_name}'.",
-            )
-        _verify_grant(grant_header, request.arguments or {})
+        enforce_execution_grant(
+            raw_request.headers.get(_GRANT_HEADER),
+            request.arguments or {},
+            request.tool_name,
+        )
     try:
         return await gateway.execute_tool(request.tool_name, request.arguments)
     except ValueError as exc:

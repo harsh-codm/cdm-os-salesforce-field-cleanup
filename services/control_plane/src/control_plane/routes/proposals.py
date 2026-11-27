@@ -29,6 +29,7 @@ from control_plane.schemas import (
 )
 from control_plane.policy_engine import policy_engine
 from control_plane.audit import record_event
+from control_plane.execution_grant import GRANT_HEADER, MUTATING_TOOLS, issue_grant
 
 logger = logging.getLogger("cdm.api.proposals")
 
@@ -439,6 +440,17 @@ async def _run_tool_execution(
                     ),
                 }
             headers = {"X-Service-Key": settings.GATEWAY_SERVICE_KEY}
+            if tool_id in MUTATING_TOOLS:
+                # One-time grant bound to this proposal and this exact body.
+                grant = issue_grant(proposal_id, tool_id, org_id, input_payload)
+                if grant:
+                    headers[GRANT_HEADER] = grant
+                else:
+                    logger.warning(
+                        "EXECUTION_GRANT_SECRET is not set — dispatching %s for %s "
+                        "without an execution grant (development only)",
+                        tool_id, proposal_id,
+                    )
             response = await client.post(
                 f"{gateway_url}{endpoint}",
                 json=input_payload,

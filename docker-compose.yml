@@ -49,6 +49,7 @@ services:
     env_file:
       - .env
     environment:
+      - PYTHONPATH=/app/src
       - POSTGRES_HOST=postgres
       - REDIS_URL=redis://redis:6379/0
       - MCP_GATEWAY_URL=http://tool-gateway:8080

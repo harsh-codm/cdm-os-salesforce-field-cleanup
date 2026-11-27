@@ -15,7 +15,7 @@ from typing import Optional
 
 import jwt
 from fastapi import Depends, HTTPException, Request
-from fastapi.security import HTTPAuthScheme, HTTPBearer
+from fastapi.security import HTTPBearer
 
 from control_plane.config import settings
 

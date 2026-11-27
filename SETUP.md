@@ -1,160 +1,175 @@
-# CDM-OS — Developer Setup Guide
+# CDM-OS — Setup & Boot Guide
 
-> This guide gets you from `git clone` to a working local Control Plane API in under 10 minutes.
-> **All 3 developers** should follow **Part 1** first, then jump to their own section.
+From `git clone` to a working stack: Postgres + Redis + Control Plane + Tool Gateway
+(in Docker) and the governance UI (Next.js, on your machine).
+
+```
+ Browser ──► apps/web (Next.js :3000)
+               │  NEXT_PUBLIC_CONTROL_PLANE_URL (browser → CP, needs CORS)
+               │  /api/salesforce/* server routes ──X-Service-Key──┐
+               ▼                                                   ▼
+        Control Plane :8000 ──X-Service-Key + X-Execution-Grant──► Tool Gateway :8080
+        policy · approvals · audit                                 MCP (stdio) → Salesforce
+               │
+        Postgres :5432 · Redis :6379
+```
 
 ---
 
-## Prerequisites
+## 1. Prerequisites
 
-Before you begin, install these tools on your machine:
+| Tool | Version | Check |
+|---|---|---|
+| Git | 2.40+ | `git --version` |
+| Docker Desktop (WSL2 on Windows) | 4.25+ | `docker compose version` |
+| Python | 3.11+ (3.12 used in containers) | `python --version` |
+| Node.js | 20 LTS+ | `node --version` |
 
-| Tool | Version | Check Command | Install |
-|---|---|---|---|
-| **Git** | 2.40+ | `git --version` | [git-scm.com](https://git-scm.com/) |
-| **Docker Desktop** | 4.25+ | `docker --version` | [docker.com/desktop](https://www.docker.com/products/docker-desktop/) |
-| **Python** | 3.11+ | `python --version` | [python.org](https://www.python.org/downloads/) |
-| **Node.js** | 20 LTS+ | `node --version` | [nodejs.org](https://nodejs.org/) *(Dev 3 only)* |
-
-> **Windows users**: Make sure Docker Desktop is running and WSL2 is enabled.
-> **Mac users**: Docker Desktop should be running in the background.
+You need Python on the host only for tests and the E2E script.
 
 ---
 
-## Part 1: Common Setup (All Developers)
+## 2. Environment variables
 
-### Step 1 — Clone the Repository
-
-```bash
-git clone https://github.com/<your-org>/rdc-os-salesforce-field-cleanup.git
-cd rdc-os-salesforce-field-cleanup
-```
-
-### Step 2 — Start Local Infrastructure (Docker Compose)
-
-```bash
-# Option A: Start DB & Redis only for local Python dev
-docker compose up postgres redis -d
-
-# Option B: Start Full Enterprise Stack (Control Plane + Tool Gateway + DB + Redis)
-docker compose up -d
-
-# Verify containers are healthy
-docker compose ps
-```
-
-You should see:
-```
-NAME                 STATUS                  PORTS
-cdm-postgres         running (healthy)       0.0.0.0:5432->5432/tcp
-cdm-redis            running (healthy)       0.0.0.0:6379->6379/tcp
-cdm-control-plane    running                 0.0.0.0:8000->8000/tcp
-cdm-tool-gateway     running                 0.0.0.0:8080->8080/tcp
-```
-
-> **What just happened?**
-> - **PostgreSQL** (`localhost:5432`) initialized `cdm_os_db` via `init.sql`.
-> - **Control Plane API** (`localhost:8000`) manages agents, proposals, policy enforcement, and audit logs.
-> - **Tool Gateway** (`localhost:8080`) hosts the FastMCP Salesforce tool server and bridge endpoints.
-> - **Redis** (`localhost:6379`) handles caching and event pub/sub.
-
-### Step 3 — Create Python Virtual Environment & Install Dependencies
-
-```bash
-# Create venv
-python -m venv .venv
-
-# Activate venv
-# Windows (PowerShell):
-.\.venv\Scripts\Activate.ps1
-# macOS/Linux:
-source .venv/bin/activate
-
-# Install dependencies (Control Plane + Tool Gateway)
-pip install -r requirements.txt
-pip install -r tool-gateway/requirements.txt
-```
-
-### Step 4 — Create & Configure Your `.env` File
+### 2.1 Root `.env` (read by Control Plane and Tool Gateway)
 
 ```bash
 cp .env.example .env
 ```
 
-Update your `.env` for Salesforce Sandbox connectivity (or keep empty for local dry-run testing):
-```env
-# --- Salesforce Connection ---
-SF_LOGIN_URL=https://test.salesforce.com
-SF_USERNAME=your-username@domain.com
-SF_PASSWORD=your-password
-SF_SECURITY_TOKEN=your-token
-SF_DOMAIN=test
-# Optional: explicitly label this org as UAT in the UI
-# SF_ORG_TYPE=UAT
-```
+Generate secrets with `python -c "import secrets; print(secrets.token_hex(32))"`.
 
-The header detects Developer Edition, Sandbox, and Production organizations from
-Salesforce organization metadata. Salesforce does not expose a reliable UAT
-classification, so set `SF_ORG_TYPE=UAT` in `.env` to label a UAT sandbox.
-Supported override values are `Developer`, `UAT`, `Sandbox`, and `Production`.
-
-### Step 5 — Run Local API Services (Manual / Standalone Mode)
-
-If running outside Docker Compose, start the services in separate terminals:
-
-```bash
-# Terminal 1: Control Plane API (Port 8000)
-uvicorn control_plane.main:app --reload --port 8000
-
-# Terminal 2: Tool Gateway API (Port 8080)
-uvicorn tool-gateway.gateway.api:app --reload --port 8080
-```
-
----
-
-## 🧪 How to Verify Everything (End-to-End Test)
-
-Run the automated integration test script to verify the full flow:
-$$\text{Agent Proposal} \longrightarrow \text{Policy Engine Gate} \longrightarrow \text{Human Decision} \longrightarrow \text{MCP Tool Gateway Execution} \longrightarrow \text{HMAC Audit Log}$$
-
-```bash
-# Run automated end-to-end integration test
-.\.venv\Scripts\python.exe test_integration.py
-```
-
-Expected output:
-```
-INFO:cdm.policy:Loaded 4 rules from sample_field_cleanup_policy.yaml
-INFO:cdm.api.proposals:Proposal created: tool=salesforce_query_field_usage status=POLICY_APPROVED
-INFO:cdm.api.proposals:Proposal created: tool=salesforce_delete_field status=PENDING_HUMAN_APPROVAL
-INFO:cdm.api.proposals:Proposal APPROVED by admin@enterprise.com -> Status=HUMAN_APPROVED
-INFO:cdm.integration_test:Total Audit Trail Entries Logged: 5
-✅ INTEGRATION TEST PASSED! All core components connected successfully.
-```
-
----
-
-## 🌐 System Services & Endpoints Reference
-
-| Service | Host & Port | URL / Docs | Purpose |
+| Variable | Used by | Required | Notes |
 |---|---|---|---|
-| **Control Plane API** | `http://localhost:8000` | [Swagger Docs](http://localhost:8000/docs) | Governance, proposal lifecycle, policy engine |
-| **Tool Gateway (MCP)** | `http://localhost:8080` | [Gateway Health](http://localhost:8080/health) | Salesforce MCP tool execution gateway |
-| **PostgreSQL Database** | `localhost:5432` | `cdm_os_db` | Agent definitions, proposals, policy rules, audit logs |
-| **Redis Event Bus** | `localhost:6379` | `redis://localhost:6379/0` | Cache and pub/sub messaging |
-| **React Governance UI** | `http://localhost:5173` | [Governance UI](http://localhost:5173) | Human-in-the-loop approval dashboard |
+| `CDM_ENV` | both | yes | `development` / `staging` / `production`. Outside `development`, both services **refuse to start** while any secret below is empty or default. |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | CP | yes | Must match the `postgres` service in `docker-compose.yml` (`cdm_os_db` / `cdm_admin`). |
+| `POSTGRES_HOST`, `POSTGRES_PORT` | CP | no | Compose overrides the host to `postgres`. Use `localhost` when running CP on the host. |
+| `REDIS_URL` | CP | no | Compose overrides it to `redis://redis:6379/0`. |
+| `CDM_JWT_SECRET` | CP | yes* | Signs API bearer tokens. |
+| `CDM_AUTH_ENABLED` | CP | no | `false` (default) = every call is a local dev admin. Set `true` anywhere shared. |
+| `CDM_CORS_ORIGINS` | CP | no | Comma-separated UI origins. Default allows `:3000` and `:5173`. |
+| `AUDIT_HMAC_SECRET` | CP | yes* | Signs the hash-chained audit log. **Changing it invalidates verification of existing rows.** |
+| `GATEWAY_SERVICE_KEY` | CP, GW, web | yes* | Service-to-service key (`X-Service-Key`). The **same value** goes in the root `.env` and `apps/web/.env.local`. Empty = check disabled (dev only). |
+| `EXECUTION_GRANT_SECRET` | CP, GW | yes* | Signs the one-time grants that delete, deprecate and rollback require. **Same value** for both. Empty = grants disabled (dev only). |
+| `EXECUTION_GRANT_TTL_SEC` | CP | no | Grant lifetime. Default `120`. |
+| `MCP_GATEWAY_URL` | CP | no | Compose overrides it to `http://tool-gateway:8080`. |
+| `MCP_REQUEST_TIMEOUT_SEC`, `FIELD_ASSESSMENT_TIMEOUT_SEC` | CP | no | `30` / `180`. A timeout marks the proposal `UNKNOWN` (needs reconciliation), not `FAILED`. |
+| `POLICY_MODE` | CP | no | `enforce` (default) / `audit_only` / `dry_run`. |
+| `SF_MOCK_MODE` | GW | no | `true` = in-memory mock org, no Salesforce needed. Each MCP call starts a fresh mock, so changes don't persist. |
+| `SF_USERNAME`, `SF_PASSWORD`, `SF_SECURITY_TOKEN` | GW | yes** | Salesforce login (option 1). |
+| `SF_CONSUMER_KEY`, `SF_PRIVATE_KEY_PATH` | GW | yes** | JWT bearer flow (option 2, preferred in production). |
+| `SF_DOMAIN` | GW | no | `test` = sandbox, `login` = production / Developer Edition. |
+| `SF_ORG_TYPE` | GW | no | Display label override: `Developer`, `UAT`, `Sandbox`, `Production`. |
+| `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, … | CP | no | Model gateway (roadmap). Not needed for field cleanup. |
+
+\* Required (non-default) whenever `CDM_ENV` isn't `development`.
+\** One Salesforce login option is required unless `SF_MOCK_MODE=true`.
+
+### 2.2 `apps/web/.env.local` (governance UI)
+
+```bash
+cp apps/web/.env.example apps/web/.env.local
+```
+
+| Variable | Side | Notes |
+|---|---|---|
+| `NEXT_PUBLIC_CONTROL_PLANE_URL` | browser | e.g. `http://localhost:8000`. The UI calls `<url>/api/v1`. The UI's own origin must be in `CDM_CORS_ORIGINS`. |
+| `TOOL_GATEWAY_URL` | server | e.g. `http://localhost:8080`. Used by the `/api/salesforce/*` proxy routes. |
+| `GATEWAY_SERVICE_KEY` | server | Same value as the root `.env`. **Never** prefix it with `NEXT_PUBLIC_`. |
+| `NEXT_PUBLIC_WS_URL` | browser | Optional realtime endpoint (no backend route yet). |
 
 ---
 
-## Daily Workflow Summary
+## 3. Boot everything
 
 ```bash
-# 1. Start Infrastructure Stack
-docker compose up -d
+# 1. Backend stack: Postgres, Redis, Control Plane, Tool Gateway
+docker compose up -d --build
+docker compose ps                       # postgres/redis "healthy", both APIs "Up"
 
-# 2. Run Test Verification
-.\.venv\Scripts\python.exe test_integration.py
+# 2. Existing database? Apply migrations (idempotent; skip on a brand-new volume).
+make migrate
+#   without make (PowerShell / bash):
+#   docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+#     < services/control_plane/database/migrations/001_add_proposals_org_id.sql
 
-# 3. View API & Gateway Logs
-docker compose logs -f control-plane tool-gateway
+# 3. Health checks
+curl http://localhost:8000/health                                   # {"status":"ok",...}
+curl http://localhost:8080/health                                   # liveness
+curl -H "X-Service-Key: $GATEWAY_SERVICE_KEY" http://localhost:8080/health/salesforce
+#   → "salesforce_connected": true   ("is_mock": true in mock mode)
+
+# 4. Governance UI
+cd apps/web
+npm ci
+npm run dev                 # http://localhost:3000   (or: npm run build && npm start)
 ```
+
+- Landing page: `http://localhost:3000/`
+- Console: `/console`. Shortcuts: `/approvals`, `/audit`, `/console?view=FieldTools`.
+- API docs: `http://localhost:8000/docs`, `http://localhost:8080/docs`.
+
+**No Salesforce credentials yet?** Set `SF_MOCK_MODE=true` in `.env`, then run
+`docker compose up -d tool-gateway` to recreate the gateway.
+
+**After editing `.env`**, recreate the services that read it. A plain `restart` keeps
+the old environment:
+
+```bash
+docker compose up -d --force-recreate control-plane tool-gateway
+```
+
+---
+
+## 4. Verify
+
+```bash
+# Unit tests (each service separately — both have a `tests` package)
+python -m venv .venv && . .venv/bin/activate      # Windows: .\.venv\Scripts\Activate.ps1
+pip install -e services/control_plane -e services/tool_gateway pytest
+make test                                          # or the two pytest commands in the Makefile
+
+# Frontend
+cd apps/web && npm test && npm run lint
+
+# End-to-end field deletion against the running stack
+python scripts/e2e_field_deletion.py               # refuses to touch a real org by default
+```
+
+The E2E script checks this sequence (27 checks):
+
+propose → Tier-3 policy → approval queue → execute-before-approval refused → duplicate refused →
+human approval → second decision refused → execution with a signed grant → `DELETED` + backup →
+re-execution refused → reject path → standard-field guard → gateway refuses a delete without a
+grant → audit events present, HMAC-signed, hash chain valid.
+
+Against a **real sandbox**, use a disposable custom field you created for the test:
+
+```bash
+python scripts/e2e_field_deletion.py --allow-real --object Account --field CDM_E2E_Test__c
+```
+
+---
+
+## 5. Services & ports
+
+| Service | URL | Purpose |
+|---|---|---|
+| Governance UI | `http://localhost:3000` | Landing page + console (approvals, proposals, audit) |
+| Control Plane | `http://localhost:8000` (`/docs`) | Proposals, policy engine, approvals, audit, execution grants |
+| Tool Gateway | `http://localhost:8080` (`/docs`) | Service-key-protected Salesforce access via MCP |
+| PostgreSQL | `localhost:5432` | `cdm_os_db` |
+| Redis | `localhost:6379` | Cache / pub-sub |
+
+---
+
+## 6. Troubleshooting
+
+| Symptom | Cause / fix |
+|---|---|
+| `POST /proposals` → 500, log says `column "org_id" … does not exist` | Database created before CR-P1-01. Run `make migrate`. |
+| Gateway `/health/salesforce` → 503 `Salesforce unreachable` | Missing `SF_*` credentials (see the gateway log), or set `SF_MOCK_MODE=true`. |
+| Gateway → 401 `Invalid or missing service key` | `GATEWAY_SERVICE_KEY` differs between the root `.env`, the containers (recreate them) and `apps/web/.env.local`. |
+| Execution `FAILED` with `Execution grant …` | `EXECUTION_GRANT_SECRET` differs between CP and GW, or the clocks are skewed by more than the TTL. |
+| UI shows "Live data unavailable (Failed to fetch)" | CORS: add the UI origin to `CDM_CORS_ORIGINS` and recreate `control-plane`. |
+| `/audit/verify-chain` reports `legacy_unverified: N` | Rows written before hash-chaining existed. Expected; everything after them is verified. |

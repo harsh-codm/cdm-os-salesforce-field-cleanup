@@ -1,3 +1,5 @@
+import { gatewayHeaders } from "../../../lib/server/gatewayAuth";
+
 export async function GET() {
   const gatewayUrl = (
     process.env.TOOL_GATEWAY_URL ??
@@ -7,6 +9,7 @@ export async function GET() {
   ).replace(/\/$/, "");
   try {
     const response = await fetch(`${gatewayUrl}/tools`, {
+      headers: gatewayHeaders(),
       cache: "no-store",
       signal: AbortSignal.timeout(10000),
     });
