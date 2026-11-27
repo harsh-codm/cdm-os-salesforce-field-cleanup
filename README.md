@@ -76,7 +76,7 @@ cdm-os-salesforce-field-cleanup/
 │       ├── Dockerfile
 │       └── pyproject.toml
 │
-├── frontend/field-cleanup/      # Next.js governance UI
+├── apps/web/                    # Next.js governance UI (landing page + console)
 ├── scripts/                     # Smoke tests & utilities
 ├── docker-compose.yml
 ├── Makefile
@@ -163,13 +163,15 @@ uvicorn tool_gateway.api:app --reload --port 8080
 
 ## Governance UI
 
-The Next.js dashboard is in `frontend/field-cleanup/`:
+The Next.js app is in `apps/web/` (configure `apps/web/.env.local` from `apps/web/.env.example`):
 
 ```bash
-cd frontend/field-cleanup
-npm install
-npm run dev    # http://localhost:3000
+cd apps/web
+npm ci
+npm run dev    # http://localhost:3000  — landing page; console at /console
 ```
+
+See **[SETUP.md](SETUP.md)** for every environment variable and the full boot sequence.
 
 Features:
 - **Approval Queue** — field metadata, population stats, dependency evidence, approve/reject
